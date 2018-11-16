@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "spline.h"
 
 using namespace std;
 
@@ -163,6 +164,88 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+bool CanChangeLane(int fastest_lane, const vector<vector<double>> & sensor_fusion, const double car_s, const double ref_vel, const double prev_size) {
+
+    //check the condition to move
+    std::cout << "Try to change lane: " << "\n";
+    bool canChange =  true;
+    for (int i = 0; i < sensor_fusion.size(); i++) {
+        //check lane of the car
+        float d = sensor_fusion[i][6];
+        //if car is on the fastest lane
+        if ((d<2+4*fastest_lane +2) && (d >2+4*fastest_lane-2)) {
+            double vx = sensor_fusion[i][3];
+            double vy = sensor_fusion[i][4];
+            double check_speed_fl = sqrt(vx*vx + vy*vy);
+            double check_car_s_fl = sensor_fusion[i][5];
+
+            check_car_s_fl +=((double)prev_size*0.02*check_speed_fl); //project s value of the car in the future
+            std::cout << "car on target lane speed " << check_speed_fl << "\n";
+            std::cout << "my speed " << ref_vel << "\n";
+            if (((check_car_s_fl > car_s) && ((check_car_s_fl - car_s) < 20))
+                || ((check_car_s_fl < car_s) && (car_s -check_car_s_fl) < 20)
+                || (abs(check_speed_fl - ref_vel)) > 30){
+                canChange = false;
+                cout << "CANT'T CHANGE!!!! to lane " << fastest_lane << " distance: "<< (check_car_s_fl - car_s)<< "m " << abs(check_speed_fl - ref_vel)
+                << "\n";
+                break;
+            }
+        }
+    }
+    return canChange;
+}
+
+int GetFastestLane(const int lane, const vector<vector<double>> & sensor_fusion  ) {
+	map<int, vector<double>> laneToVels;
+	//check which lane is the best
+	for (int i = 0; i < sensor_fusion.size(); i++) {
+		//get lane of the car
+		//int d = (((double)sensor_fusion[i][6])-2.)/4;
+		int d = sensor_fusion[i][6];
+		int d_lane = 0;
+		for(int l = 0; l < 3; l++) {
+		    if((d<2+4*l +2) && (d >2+4*l-2)) {
+		       d_lane = l;
+		       break;
+		    }
+		}
+		if (d_lane > 2) {
+			std::cout << "AAAAAAAAAAAAAA lane: " << d_lane << "\n";
+		}
+		double vx = sensor_fusion[i][3];
+		double vy = sensor_fusion[i][4];
+		double car_speed = sqrt(vx*vx + vy*vy);
+		if ( laneToVels.find(d_lane) == laneToVels.end() ) {
+			// not found
+			vector<double> speedVector {car_speed};
+			laneToVels.insert(make_pair(d_lane, speedVector));
+		} else {
+			// found
+			auto speedVector = laneToVels.at(d_lane);
+			speedVector.push_back(car_speed);
+		}
+	}
+	//get the fastest lane
+	int fastest_lane = lane;
+	int fastest_velocity = 0;
+	for (int i = 0; i < 3; i ++) {
+		if (laneToVels.find(i) == laneToVels.end() ) {
+			fastest_lane = i;
+			std::cout << "fastest lane is empty! : " << fastest_lane << "\n";
+			break;
+		} else {
+			auto speedVector = laneToVels.at(i);
+			double average = accumulate( speedVector.begin(), speedVector.end(), 0.0)/speedVector.size();
+			if (average >= fastest_velocity) {
+				fastest_lane = i;
+				fastest_velocity = average;
+			}
+		}
+
+	}
+	return fastest_lane;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -200,7 +283,10 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  int lane = 1;
+  double ref_vel = 0;
+
+  h.onMessage([&ref_vel, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -236,11 +322,194 @@ int main() {
 
           	// Sensor Fusion Data, a list of all other cars on the same side of the road.
           	auto sensor_fusion = j[1]["sensor_fusion"];
-
           	json msgJson;
 
-          	vector<double> next_x_vals;
+          	int prev_size = previous_path_x.size();
+            if (prev_size > 0) {
+                car_s = end_path_s;
+            }
+
+            //
+            int fastest_lane = GetFastestLane(lane, sensor_fusion);
+
+			/*for (auto const& x : laneToVels) {
+				double average = accumulate( x.second.begin(), x.second.end(), 0.0)/x.second.size();
+				std::cout << "average: " << average << "\n";
+				if (average >= fastest_velocity) {
+					fastest_lane = x.first;
+					fastest_velocity = average;
+				}
+			} */
+
+			std::cout << "fastest lane: " << fastest_lane << "\n";
+
+
+            bool too_close = false;
+            double infrontCarSpeed = 0;
+            for (int i = 0; i < sensor_fusion.size(); i++) {
+                //check lane of the car
+                float d = sensor_fusion[i][6];
+                //if car is on my lane
+                if ((d<2+4*lane +2) && (d >2+4*lane-2)) {
+                    double vx = sensor_fusion[i][3];
+                    double vy = sensor_fusion[i][4];
+                    double check_speed = sqrt(vx*vx + vy*vy);
+                    double check_car_s = sensor_fusion[i][5];
+
+                    check_car_s +=((double)prev_size*0.02*check_speed); //project s value of the car in the future
+                    if ((check_car_s > car_s) && (check_car_s - car_s) < 30) {
+                        too_close = true;
+						infrontCarSpeed = check_speed;
+                        //TODO check other cars
+                        //if(lane > 0) {
+                        //    lane = 0;
+                        //}
+                        //change lane
+                        //chnage only 1 lane at a time
+                        if (abs(fastest_lane - lane )>1) {
+                            cout << "fastest lane was" << fastest_lane;
+                            if (fastest_lane > lane)
+                                fastest_lane --;
+                            else
+                                fastest_lane++;
+                            cout << "fastest lane is" << fastest_lane;
+                        }
+                        bool canChange = CanChangeLane(fastest_lane, sensor_fusion, car_s, ref_vel, prev_size);
+
+
+						if (canChange) {
+							std::cout << "canChange lane from " << lane << " to "<< fastest_lane <<"\n";
+							if(abs(lane-fastest_lane) > 1) {
+                                std::cout << "WRONG!!!!!!!!\n";
+							}
+							lane = fastest_lane;
+						}
+                       //ref_vel = 29.5;
+                    }
+                }
+            }
+
+
+
+            //TODO go to pack planner change velocity there
+            if (too_close && (ref_vel > (infrontCarSpeed-5))) {
+                ref_vel -=0.224; //5m/sec
+            } else if(ref_vel < 49.5) {
+                ref_vel +=0.224;
+            }
+
+
+            //list of widely spaced points (30 m) to interpolate into line later
+            vector<double> ptsx;
+            vector<double> ptsy;
+
+
+            //reference of the starting point, x,y and the yaw
+            double ref_x = car_x;
+            double ref_y = car_y;
+            double ref_yaw = deg2rad(car_yaw);
+
+
+            //if prevoius path is empty use the car as starting reference
+            if (prev_size < 2) {
+                //use 2 opoints to make the path tangent to the car
+                double prev_car_x = car_x - cos(car_yaw);
+                double prev_car_y = car_y - sin(car_yaw);
+
+                ptsx.push_back(prev_car_x);
+                ptsx.push_back(car_x);
+
+                ptsy.push_back(prev_car_y);
+                ptsy.push_back(car_y);
+            } else {
+                //redefine reference state as prevoius path end point
+                ref_x = previous_path_x[prev_size - 1];
+                ref_y = previous_path_y[prev_size - 1];
+
+                double ref_x_prev = previous_path_x[prev_size - 2];
+                double ref_y_prev = previous_path_y[prev_size - 2];
+                ref_yaw = atan2(ref_y -ref_y_prev, ref_x-ref_x_prev);
+
+                ptsx.push_back(ref_x_prev);
+                ptsx.push_back(ref_x);
+
+                ptsy.push_back(ref_y_prev);
+                ptsy.push_back(ref_y);
+
+            }
+
+            //add 30 m spaced points ahead of a starting reference
+            vector<double> next_wp0 = getXY(car_s+30,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp1 = getXY(car_s+60,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp2 = getXY(car_s+90,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+            ptsx.push_back(next_wp0[0]);
+            ptsx.push_back(next_wp1[0]);
+            ptsx.push_back(next_wp2[0]);
+
+            ptsy.push_back(next_wp0[1]);
+            ptsy.push_back(next_wp1[1]);
+            ptsy.push_back(next_wp2[1]);
+
+            for(int i = 0; i < ptsx.size(); i++) {
+                //shift to origin, rotation
+                double shift_x = ptsx[i] - ref_x;
+                double shift_y = ptsy[i] - ref_y;
+
+                ptsx[i] = (shift_x*cos(0-ref_yaw) - shift_y*sin(0-ref_yaw));
+                ptsy[i] = (shift_x*sin(0-ref_yaw) + shift_y*cos(0-ref_yaw));
+            }
+
+            //create a spline
+            tk::spline s;
+            s.set_points(ptsx, ptsy);
+
+            vector<double> next_x_vals;
           	vector<double> next_y_vals;
+
+
+          	//start from previous path points from last time
+          	for(int i = 0; i < previous_path_x.size(); i++) {
+          	    next_x_vals.push_back(previous_path_x[i]);
+                next_y_vals.push_back(previous_path_y[i]);
+          	}
+
+          	//calculate the distance between points so we keep our desired speed
+          	double target_x =30.0;
+          	double target_y = s(target_x);
+          	double target_dist = sqrt((target_x*target_x) + (target_y*target_y));
+          	double x_add_on = 0;
+          	// fill out path points on a spline
+          	for(int i = 0; i <=50-previous_path_x.size(); i++) {
+          	    //TODO substrcat velocity here
+          	    double N =(target_dist/(0.02*(ref_vel/2.24)));
+          	    double x_point = x_add_on + (target_x)/N;
+          	    double y_point = s(x_point);
+
+          	    x_add_on = x_point;
+          	    double x_ref = x_point;
+          	    double y_ref = y_point;
+          	    //rotate back to global coordinates
+          	    x_point = (x_ref*cos(ref_yaw) - y_ref*sin(ref_yaw));
+          	    y_point = (x_ref*sin(ref_yaw) + y_ref*cos(ref_yaw));
+
+          	    x_point +=ref_x;
+          	    y_point +=ref_y;
+          	    next_x_vals.push_back(x_point);
+          	    next_y_vals.push_back(y_point);
+
+          	}
+
+          	/*
+
+			double dist_inc = 0.3;
+			for(int i = 0; i < 50; i++) {
+				double next_s = car_s + (i+1)*dist_inc;
+				double next_d = 6;
+				vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+				next_x_vals.push_back(xy[0]);
+				next_y_vals.push_back(xy[1]);
+			} */
 
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
