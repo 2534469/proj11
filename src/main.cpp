@@ -9,6 +9,8 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 #include "spline.h"
+#include "Vehicle.h"
+#include "PathPlanner.h"
 
 using namespace std;
 
@@ -164,7 +166,7 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-bool CanChangeLane(int fastest_lane, const vector<vector<double>> & sensor_fusion, const double car_s, const double ref_vel, const double prev_size) {
+/*bool CanChangeLane(int fastest_lane, const vector<vector<double>> & sensor_fusion, const double car_s, const double ref_vel, const double prev_size) {
 
     //check the condition to move
     std::cout << "Try to change lane: " << "\n";
@@ -245,6 +247,7 @@ int GetFastestLane(const int lane, const vector<vector<double>> & sensor_fusion 
 	}
 	return fastest_lane;
 }
+ */
 
 int main() {
   uWS::Hub h;
@@ -285,8 +288,13 @@ int main() {
 
   int lane = 1;
   double ref_vel = 0;
+  Vehicle  egoVehicle = Vehicle(ref_vel, lane, 0, 0);
+  PathPlanner pathPlanner = PathPlanner(lane, ref_vel);
+  pathPlanner.state = PathState::keepLane;
+  pathPlanner.SetEgoVehicle(egoVehicle);
 
-  h.onMessage([&ref_vel, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy, &lane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+
+  h.onMessage([&pathPlanner, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -329,8 +337,22 @@ int main() {
                 car_s = end_path_s;
             }
 
+			pathPlanner.egoVehicle.prev_size = prev_size;
+			pathPlanner.egoVehicle.car_s = car_s;
+			pathPlanner.egoVehicle.x = car_x;
+			pathPlanner.egoVehicle.y = car_y;
+			pathPlanner.egoVehicle.s = car_s;
+			pathPlanner.egoVehicle.d = car_d;
+
+			//pathPlanner.egoVehicle.speed = car_speed;
+
+			pathPlanner.SetSensorFusion(sensor_fusion);
+			pathPlanner.Update();
+			//pathPlanner.egoVehicle.speed = ref_vel;
+			//egoVehicle.lane = lane;
+
             //
-            int fastest_lane = GetFastestLane(lane, sensor_fusion);
+            //int fastest_lane = GetFastestLane(lane, sensor_fusion);
 
 			/*for (auto const& x : laneToVels) {
 				double average = accumulate( x.second.begin(), x.second.end(), 0.0)/x.second.size();
@@ -341,7 +363,7 @@ int main() {
 				}
 			} */
 
-			std::cout << "fastest lane: " << fastest_lane << "\n";
+			/*std::cout << "fastest lane: " << fastest_lane << "\n";
 
 
             bool too_close = false;
@@ -396,7 +418,7 @@ int main() {
                 ref_vel -=0.224; //5m/sec
             } else if(ref_vel < 49.5) {
                 ref_vel +=0.224;
-            }
+            } */
 
 
             //list of widely spaced points (30 m) to interpolate into line later
@@ -439,9 +461,10 @@ int main() {
             }
 
             //add 30 m spaced points ahead of a starting reference
-            vector<double> next_wp0 = getXY(car_s+30,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp1 = getXY(car_s+60,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp2 = getXY(car_s+90,(2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            cout << "egoVehicle.lane: " << pathPlanner.egoVehicle.lane <<"\n";
+            vector<double> next_wp0 = getXY(car_s+30,(2+4*pathPlanner.egoVehicle.lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp1 = getXY(car_s+60,(2+4*pathPlanner.egoVehicle.lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp2 = getXY(car_s+90,(2+4*pathPlanner.egoVehicle.lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
             ptsx.push_back(next_wp0[0]);
             ptsx.push_back(next_wp1[0]);
@@ -482,7 +505,7 @@ int main() {
           	// fill out path points on a spline
           	for(int i = 0; i <=50-previous_path_x.size(); i++) {
           	    //TODO substrcat velocity here
-          	    double N =(target_dist/(0.02*(ref_vel/2.24)));
+          	    double N =(target_dist/(0.02*(pathPlanner.egoVehicle.speed/2.24)));
           	    double x_point = x_add_on + (target_x)/N;
           	    double y_point = s(x_point);
 
