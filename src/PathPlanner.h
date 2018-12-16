@@ -41,7 +41,7 @@ public:
         egoVehicle = _egoVehicle;
     }
     int GetFastestLane(const int lane);
-    bool CanChangeLane(int fastest_lane, const double car_s, const double ref_vel, const double prev_size);
+    bool CanChangeLane();
     pair<bool, double> getCarSpeedInfront();
 
 private:

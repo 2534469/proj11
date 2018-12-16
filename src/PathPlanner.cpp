@@ -74,25 +74,6 @@ PathState PathPlanner::KeepLane(){
     cout << "KeepLane\n";
     //check if some car ahead
     bool too_close = slowDownBeforeCar();
-    /*for (int i = 0; i < sensor_fusion.size(); i++) {
-        //check lane of the car
-        float d = sensor_fusion[i][6];
-        //if car is on my lane
-        if ((d < 2 + 4 * egoVehicle.lane + 2) && (d > 2 + 4 * egoVehicle.lane - 2)) {
-            double vx = sensor_fusion[i][3];
-            double vy = sensor_fusion[i][4];
-            double check_speed = sqrt(vx * vx + vy * vy);
-            double check_car_s = sensor_fusion[i][5];
-
-            check_car_s += ((double) egoVehicle.prev_size * 0.02 * check_speed); //project s value of the car in the future
-            if ((check_car_s > egoVehicle.car_s) && (check_car_s - egoVehicle.car_s) < 30) {
-                too_close = true;
-                infrontCarSpeed = check_speed;
-                break;
-            }
-        }
-    } */
-
     if (egoVehicle.speed < speedLimit-30) {
         return PathState ::keepLane;
     }
@@ -103,12 +84,10 @@ PathState PathPlanner::KeepLane(){
             return PathState::keepLane;
         //if 2 lanes away move first to the next one
         if (abs(fastestLane - current_lane) > 1) {
-            //cout << "fastest lane was" << fastest_lane;
             if (fastestLane > current_lane)
                 fastestLane--;
             else
                 fastestLane++;
-            //cout << "fastest lane is" << fastest_lane;
         }
         cout << "NEW FASTEST LANE: " << fastestLane << "\n";
         if (current_lane > fastestLane) {
@@ -181,7 +160,7 @@ PathState PathPlanner::PrepareLaneChangeLeft() {
     cout << "changeLeftStepsCnt got : " << changeLeftStepsCnt << "\n";
     slowDownBeforeCar();
 
-    bool canChange = CanChangeLane(next_lane, egoVehicle.car_s, egoVehicle.speed, egoVehicle.prev_size);
+    bool canChange = CanChangeLane();
     if (canChange) {
         changeLeftStepsCnt = 0;
         return PathState::laneChangeLeft;
@@ -208,37 +187,7 @@ bool PathPlanner::slowDownBeforeCar() {
     return too_close;
 }
 
-bool PathPlanner::CanChangeLane(int fastest_lane, const double car_s, const double ref_vel, const double prev_size) {
-
-    //check the condition to move
-    //std::cout << "Try to change lane: " << "\n";
-    //bool canChange =  true;
-    /*for (int i = 0; i < sensor_fusion.size(); i++) {
-        //check lane of the car
-        float d = sensor_fusion[i][6];
-        //if car is on the fastest lane
-        if ((d<2+4*fastest_lane +2) && (d >2+4*fastest_lane-2)) {
-            double vx = sensor_fusion[i][3];
-            double vy = sensor_fusion[i][4];
-            double check_speed_fl = sqrt(vx*vx + vy*vy);
-            double check_car_s_fl = sensor_fusion[i][5];
-
-            check_car_s_fl +=((double)prev_size*0.02*check_speed_fl); //project s value of the car in the future
-            //std::cout << "car on target lane speed " << check_speed_fl << "\n";
-            //std::cout << "my speed " << ref_vel << "\n";
-            double timeToGet = abs(check_car_s_fl - car_s) / ref_vel;
-
-            //if (((check_car_s_fl > car_s) && ((check_car_s_fl - car_s) < 20))
-            //    || ((check_car_s_fl < car_s) && (car_s -check_car_s_fl) < 20)
-             //   || (abs(check_speed_fl - ref_vel)) > 10){
-             if(timeToGet < 1.0 || abs(check_speed_fl - ref_vel) > 10) {
-                canChange = false;
-                cout << "CANT'T CHANGE!!!! to lane " << fastest_lane << " distance: "<< (check_car_s_fl - car_s)<< "m " << abs(check_speed_fl - ref_vel)
-                     << "timeToGet: "<< timeToGet <<"\n";
-                break;
-            }
-        }
-    } */
+bool PathPlanner::CanChangeLane() {
     Vehicle* vehicleBehind = getNextLaneVehicleBehind(next_lane);
     bool clearBehind;
     if (vehicleBehind != nullptr) {
@@ -274,15 +223,6 @@ bool PathPlanner::checkVehicleCollide(Vehicle * vehicle) {
     double prediction_time = 0.1; //50 controller cycles 0.02
     double speed = sqrt(vx*vx + vy*vy)/0.44704;///0.44704;
     cout << "other speed: " << speed << "\n";
-    /*double predicted_x = vehicle->x + vx*prediction_time;
-    double predicted_y = vehicle->y + vy*prediction_time;
-
-    //prediction for ego_car
-    double predicted_ego_x = egoVehicle.x + egoVehicle.vx*prediction_time;
-    double predicted_ego_y = egoVehicle.y + egoVehicle.vy*prediction_time;
-
-    //find distance
-    double predicted_distance = distance(predicted_x, predicted_y, predicted_ego_x, predicted_ego_y);*/
     double s_now = vehicle->s;
     cout << "vehicle next s: " << s_now << "\n";
     cout << "my s: " << egoVehicle.car_s << "\n";
@@ -350,7 +290,7 @@ PathState PathPlanner::PrepareLaneChangeRight(){
     cout << "PrepareLaneChangeRight\n";
     slowDownBeforeCar();
 
-    bool canChange = CanChangeLane(next_lane, egoVehicle.car_s, egoVehicle.speed, egoVehicle.prev_size);
+    bool canChange = CanChangeLane();
     if (canChange) {
         changeRightStepsCnt = 0;
         return PathState::laneChangeRight;

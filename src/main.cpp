@@ -166,88 +166,6 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-/*bool CanChangeLane(int fastest_lane, const vector<vector<double>> & sensor_fusion, const double car_s, const double ref_vel, const double prev_size) {
-
-    //check the condition to move
-    std::cout << "Try to change lane: " << "\n";
-    bool canChange =  true;
-    for (int i = 0; i < sensor_fusion.size(); i++) {
-        //check lane of the car
-        float d = sensor_fusion[i][6];
-        //if car is on the fastest lane
-        if ((d<2+4*fastest_lane +2) && (d >2+4*fastest_lane-2)) {
-            double vx = sensor_fusion[i][3];
-            double vy = sensor_fusion[i][4];
-            double check_speed_fl = sqrt(vx*vx + vy*vy);
-            double check_car_s_fl = sensor_fusion[i][5];
-
-            check_car_s_fl +=((double)prev_size*0.02*check_speed_fl); //project s value of the car in the future
-            std::cout << "car on target lane speed " << check_speed_fl << "\n";
-            std::cout << "my speed " << ref_vel << "\n";
-            if (((check_car_s_fl > car_s) && ((check_car_s_fl - car_s) < 20))
-                || ((check_car_s_fl < car_s) && (car_s -check_car_s_fl) < 20)
-                || (abs(check_speed_fl - ref_vel)) > 30){
-                canChange = false;
-                cout << "CANT'T CHANGE!!!! to lane " << fastest_lane << " distance: "<< (check_car_s_fl - car_s)<< "m " << abs(check_speed_fl - ref_vel)
-                << "\n";
-                break;
-            }
-        }
-    }
-    return canChange;
-}
-
-int GetFastestLane(const int lane, const vector<vector<double>> & sensor_fusion  ) {
-	map<int, vector<double>> laneToVels;
-	//check which lane is the best
-	for (int i = 0; i < sensor_fusion.size(); i++) {
-		//get lane of the car
-		//int d = (((double)sensor_fusion[i][6])-2.)/4;
-		int d = sensor_fusion[i][6];
-		int d_lane = 0;
-		for(int l = 0; l < 3; l++) {
-		    if((d<2+4*l +2) && (d >2+4*l-2)) {
-		       d_lane = l;
-		       break;
-		    }
-		}
-		if (d_lane > 2) {
-			std::cout << "AAAAAAAAAAAAAA lane: " << d_lane << "\n";
-		}
-		double vx = sensor_fusion[i][3];
-		double vy = sensor_fusion[i][4];
-		double car_speed = sqrt(vx*vx + vy*vy);
-		if ( laneToVels.find(d_lane) == laneToVels.end() ) {
-			// not found
-			vector<double> speedVector {car_speed};
-			laneToVels.insert(make_pair(d_lane, speedVector));
-		} else {
-			// found
-			auto speedVector = laneToVels.at(d_lane);
-			speedVector.push_back(car_speed);
-		}
-	}
-	//get the fastest lane
-	int fastest_lane = lane;
-	int fastest_velocity = 0;
-	for (int i = 0; i < 3; i ++) {
-		if (laneToVels.find(i) == laneToVels.end() ) {
-			fastest_lane = i;
-			std::cout << "fastest lane is empty! : " << fastest_lane << "\n";
-			break;
-		} else {
-			auto speedVector = laneToVels.at(i);
-			double average = accumulate( speedVector.begin(), speedVector.end(), 0.0)/speedVector.size();
-			if (average >= fastest_velocity) {
-				fastest_lane = i;
-				fastest_velocity = average;
-			}
-		}
-
-	}
-	return fastest_lane;
-}
- */
 
 int main() {
   uWS::Hub h;
@@ -299,8 +217,6 @@ int main() {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-    //auto sdata = string(data).substr(0, length);
-    //cout << sdata << endl;
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
 
       auto s = hasData(data);
@@ -348,78 +264,6 @@ int main() {
 
 			pathPlanner.SetSensorFusion(sensor_fusion);
 			pathPlanner.Update();
-			//pathPlanner.egoVehicle.speed = ref_vel;
-			//egoVehicle.lane = lane;
-
-            //
-            //int fastest_lane = GetFastestLane(lane, sensor_fusion);
-
-			/*for (auto const& x : laneToVels) {
-				double average = accumulate( x.second.begin(), x.second.end(), 0.0)/x.second.size();
-				std::cout << "average: " << average << "\n";
-				if (average >= fastest_velocity) {
-					fastest_lane = x.first;
-					fastest_velocity = average;
-				}
-			} */
-
-			/*std::cout << "fastest lane: " << fastest_lane << "\n";
-
-
-            bool too_close = false;
-            double infrontCarSpeed = 0;
-            for (int i = 0; i < sensor_fusion.size(); i++) {
-                //check lane of the car
-                float d = sensor_fusion[i][6];
-                //if car is on my lane
-                if ((d<2+4*lane +2) && (d >2+4*lane-2)) {
-                    double vx = sensor_fusion[i][3];
-                    double vy = sensor_fusion[i][4];
-                    double check_speed = sqrt(vx*vx + vy*vy);
-                    double check_car_s = sensor_fusion[i][5];
-
-                    check_car_s +=((double)prev_size*0.02*check_speed); //project s value of the car in the future
-                    if ((check_car_s > car_s) && (check_car_s - car_s) < 30) {
-                        too_close = true;
-						infrontCarSpeed = check_speed;
-                        //TODO check other cars
-                        //if(lane > 0) {
-                        //    lane = 0;
-                        //}
-                        //change lane
-                        //chnage only 1 lane at a time
-                        if (abs(fastest_lane - lane )>1) {
-                            cout << "fastest lane was" << fastest_lane;
-                            if (fastest_lane > lane)
-                                fastest_lane --;
-                            else
-                                fastest_lane++;
-                            cout << "fastest lane is" << fastest_lane;
-                        }
-                        bool canChange = CanChangeLane(fastest_lane, sensor_fusion, car_s, ref_vel, prev_size);
-
-
-						if (canChange) {
-							std::cout << "canChange lane from " << lane << " to "<< fastest_lane <<"\n";
-							if(abs(lane-fastest_lane) > 1) {
-                                std::cout << "WRONG!!!!!!!!\n";
-							}
-							lane = fastest_lane;
-						}
-                       //ref_vel = 29.5;
-                    }
-                }
-            }
-
-
-
-            //TODO go to pack planner change velocity there
-            if (too_close && (ref_vel > (infrontCarSpeed-5))) {
-                ref_vel -=0.224; //5m/sec
-            } else if(ref_vel < 49.5) {
-                ref_vel +=0.224;
-            } */
-
 
             //list of widely spaced points (30 m) to interpolate into line later
             vector<double> ptsx;
@@ -504,7 +348,6 @@ int main() {
           	double x_add_on = 0;
           	// fill out path points on a spline
           	for(int i = 0; i <=50-previous_path_x.size(); i++) {
-          	    //TODO substrcat velocity here
           	    double N =(target_dist/(0.02*(pathPlanner.egoVehicle.speed/2.24)));
           	    double x_point = x_add_on + (target_x)/N;
           	    double y_point = s(x_point);
@@ -523,19 +366,6 @@ int main() {
 
           	}
 
-          	/*
-
-			double dist_inc = 0.3;
-			for(int i = 0; i < 50; i++) {
-				double next_s = car_s + (i+1)*dist_inc;
-				double next_d = 6;
-				vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-				next_x_vals.push_back(xy[0]);
-				next_y_vals.push_back(xy[1]);
-			} */
-
-
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
